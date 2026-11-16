@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0f7b5f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Jacinto">
+<title>Jacinto</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="marca">
+    <img src="icon-192.png" alt="" width="30" height="30">
+    <span>Jacinto</span>
+    <span id="demoTag" class="tag" hidden>DEMO</span>
+  </div>
+  <div class="topacciones">
+    <a id="chipCorrida" class="chip" target="_blank" rel="noopener" hidden></a>
+    <button type="button" id="btnRefrescar" class="icono" aria-label="Actualizar datos" title="Actualizar">⟳</button>
+    <button type="button" id="btnAjustes" class="icono" aria-label="Ajustes" title="Ajustes">⚙</button>
+  </div>
+</header>
+
+<main id="main">
+  <div id="aviso" class="aviso" role="alert" hidden></div>
+
+  <section id="cargando" class="card" aria-busy="true">
+    <p class="vacio">Cargando los datos de Jacinto…</p>
+  </section>
+
+  <section id="vacio" class="card" hidden>
+    <h2 class="sec">Sin datos todavía</h2>
+    <p>Toca <b>🔍 Analizar</b> una vez: en unos minutos Jacinto escribe la pestaña <code>app</code> de la hoja y aquí verás tu banca, apuestas y mercados.</p>
+  </section>
+
+  <div id="contenido" hidden>
+    <section id="hero" class="card hero" aria-label="Banca y resultado de hoy"></section>
+
+    <section class="card" aria-labelledby="tApuestas">
+      <h2 class="sec" id="tApuestas">Apuestas de hoy <span id="nApuestas" class="cuenta"></span></h2>
+      <div id="apuestas"></div>
+    </section>
+
+    <section class="card" aria-labelledby="tMercados">
+      <h2 class="sec" id="tMercados">Mercados de hoy</h2>
+      <div id="chipsMerc" class="chips" role="group" aria-label="Filtrar mercados"></div>
+      <div id="mercados"></div>
+    </section>
+
+    <section class="card" aria-labelledby="tDias">
+      <h2 class="sec" id="tDias">Últimos días</h2>
+      <div id="dias"></div>
+    </section>
+
+    <section class="card">
+      <details class="reglas-box">
+        <summary>Reglas del modelo y glosario</summary>
+        <div id="reglas"></div>
+      </details>
+    </section>
+  </div>
+
+  <section class="card" aria-labelledby="tCorridas">
+    <h2 class="sec" id="tCorridas">Corridas en GitHub</h2>
+    <div id="corridas"></div>
+    <div id="proximas"></div>
+  </section>
+
+  <footer id="pie" class="pie"></footer>
+</main>
+
+<nav class="acciones" aria-label="Acciones de Jacinto">
+  <div class="acciones-in">
+    <button type="button" data-accion="analizar" class="principal"><span class="ico" aria-hidden="true">🔍</span>Analizar</button>
+    <button type="button" data-accion="cerrar"><span class="ico" aria-hidden="true">🌙</span>Cerrar día</button>
+    <button type="button" data-accion="resumen"><span class="ico" aria-hidden="true">📊</span>Resumen</button>
+  </div>
+</nav>
+
+<dialog id="dlgConfirmar" class="hoja" aria-labelledby="tConf">
+  <div class="hoja-in">
+    <h2 id="tConf">¿Seguro?</h2>
+    <p id="txtConf"></p>
+    <div class="botones fin">
+      <button type="button" id="btnConfNo">Cancelar</button>
+      <button type="button" id="btnConfOk" class="primario">Sí</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="dlgAjustes" class="hoja" aria-labelledby="tAjustes">
+  <div class="hoja-in">
+    <h2 id="tAjustes">Ajustes</h2>
+    <p id="ajNota" class="nota destacada" hidden></p>
+
+    <label for="inToken">Token de GitHub</label>
+    <div class="tokenfila">
+      <input id="inToken" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+             placeholder="github_pat_…" inputmode="text">
+      <button type="button" id="btnVerToken">Ver</button>
+    </div>
+    <p id="tokenEstado" class="nota"></p>
+
+    <div class="botones">
+      <button type="button" id="btnProbar">Probar conexión</button>
+      <button type="button" id="btnBorrarToken" class="peligro">Borrar token</button>
+    </div>
+    <p id="probarRes" class="nota" role="status"></p>
+
+    <label for="inSheet">Link de tu hoja de Google</label>
+    <input id="inSheet" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="url"
+           placeholder="https://docs.google.com/spreadsheets/d/…">
+    <p class="nota">Pega el link completo de la hoja (o solo su ID). Queda guardado solo en este teléfono.</p>
+
+    <details class="avanzado">
+      <summary>Repositorio</summary>
+      <label for="inOwner">Dueño (usuario de GitHub)</label><input id="inOwner" autocapitalize="off" spellcheck="false">
+      <label for="inRepo">Repositorio</label><input id="inRepo" autocapitalize="off" spellcheck="false">
+      <label for="inWorkflow">Workflow</label><input id="inWorkflow" autocapitalize="off" spellcheck="false">
+      <label for="inBranch">Rama</label><input id="inBranch" autocapitalize="off" spellcheck="false">
+    </details>
+
+    <p class="nota">El token queda solo en este teléfono y solo sirve para ver y lanzar corridas de jacinto-bot. Si pierdes el teléfono, bórralo en GitHub.</p>
+    <p class="nota"><a id="linkDemo" href="?demo=1">Ver la demo (datos de ejemplo)</a></p>
+
+    <div class="botones fin">
+      <button type="button" id="btnCerrarAj">Cerrar</button>
+      <button type="button" id="btnGuardar" class="primario">Guardar</button>
+    </div>
+  </div>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script src="nucleo.js" defer></script>
+<script src="app.js" defer></script>
+</body>
+</html>
