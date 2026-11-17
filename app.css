@@ -95,6 +95,8 @@ h2.sec { font-size: 12.5px; letter-spacing: .07em; text-transform: uppercase; co
 .meta b { color: var(--text); }
 .meta b, .resultado b, .resumen-dias b, .m3 b, .nw { white-space: nowrap; }
 .resultado { margin-top: 6px; font-size: 14px; font-variant-numeric: tabular-nums; }
+.prem { margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--border); display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--muted, inherit); }
+.prem.oculta span { color: var(--warn); font-weight: 700; }
 .alerta { margin-top: 8px; font-size: 13px; background: var(--warn-bg); color: var(--warn); padding: 8px 10px; border-radius: 10px; }
 .estado, .badge { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
 .estado.hit, .badge.apuesta, .tipo.valor { background: var(--pos-bg); color: var(--pos); }

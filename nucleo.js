@@ -157,6 +157,12 @@ function htmlHero(d) {
 
 const ESTADOS = { HIT: ['Ganada', 'hit'], MISS: ['Perdida', 'miss'], NULO: ['Nula', 'nulo'],
   Pendiente: ['Pendiente', 'pend'], REVISAR_MANUAL: ['Por revisar', 'rev'] };
+/** Fila "👑 premium" (solo si la app está conectada al servidor premium): visible u oculta para tus clientes. */
+function htmlPremium(a) {
+  if (typeof a.premium !== 'boolean' || !a.id) return '';
+  return `<div class="prem${a.premium ? '' : ' oculta'}"><span>👑 ${a.premium ? 'Visible para tus clientes premium' : 'Oculta en premium'}</span>` +
+    `<button type="button" class="link" data-premium="${esc(a.id)}" data-oculto="${a.premium ? '1' : '0'}">${a.premium ? 'Ocultar' : 'Mostrar'}</button></div>`;
+}
 function htmlApuesta(a, hoyStr) {
   const tipo = String(a.tipo || '').toUpperCase(), e = ESTADOS[a.estado] || [a.estado ? String(a.estado) : 'Pendiente', 'pend'];
   const cerrada = a.estado === 'HIT' || a.estado === 'MISS' || a.estado === 'NULO';
@@ -178,7 +184,7 @@ function htmlApuesta(a, hoyStr) {
     `<div class="pick"><b>${esc(a.pronostico || '')}</b> <span class="cuota">@ ${cuota(a.cuota)}</span>` +
     `${a.casa ? ` <span class="casa">${esc(a.casa)}</span>` : ''}${etiqueta}</div>` +
     (meta.length ? `<div class="meta">${meta.join(' · ')}</div>` : '') +
-    (res.length ? `<div class="resultado">${res.join(' · ')}</div>` : '') + aviso + '</article>';
+    (res.length ? `<div class="resultado">${res.join(' · ')}</div>` : '') + aviso + htmlPremium(a) + '</article>';
 }
 function htmlApuestas(d) {
   d = d || {};

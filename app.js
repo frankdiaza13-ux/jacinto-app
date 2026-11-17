@@ -2,10 +2,11 @@
    El token de GitHub queda solo en este teléfono (localStorage). */
 (function () {
 'use strict';
-const N = window.JacintoNucleo, VERSION = '1.0.1';
+const N = window.JacintoNucleo, VERSION = '1.1.0';
 // El ID de la hoja NO va en el código (el repo de la app es público y la hoja tiene los picks del VIP):
 // se pega una vez en Ajustes (link completo o solo el ID) o se abre la app con #hoja=<ID>; queda solo en el teléfono.
-const DEF = { owner: 'frankdiaza13-ux', repo: 'jacinto-bot', workflow: 'jacinto_cron.yml', branch: 'main', sheetId: '' };
+const DEF = { owner: 'frankdiaza13-ux', repo: 'jacinto-bot', workflow: 'jacinto_cron.yml', branch: 'main', sheetId: '',
+  api: 'https://jacinto-premium.jacinto-bot.workers.dev' };   // v1.1: servidor premium (Cloudflare). Con token, los datos salen de ahí y la hoja puede ser privada.
 const idHoja = (t) => { const s = String(t || '').trim(), m = s.match(/\/spreadsheets\/d\/([A-Za-z0-9_-]{20,})/); return m ? m[1] : s; };
 const K = { cfg: 'jacinto.cfg', tok: 'jacinto.token', ultimo: 'jacinto.ultimo', seg: 'jacinto.seguimiento', filtro: 'jacinto.filtro' };
 const INPUTS_EXTRA = { motor: 'pinnacle', generar_voz: 'no' }, MAX_SEG_MS = 12 * 60 * 1000;
@@ -35,6 +36,7 @@ const cfg = () => {
 };
 const token = () => (store.get(K.tok) || '').trim();
 
+let ocultas = null;   // ids ocultos en la app premium (null = sin servidor premium)
 let datos = null, ultimaCarga = 0, runs = [], cargando = false, seguimiento = null, accionPendiente = null;
 let timerSeg = null, timerToast = null, timerChip = null, filtro = store.get(K.filtro) || 'todas';
 
@@ -74,6 +76,18 @@ const MSG_HOJA = {
   gviz: 'Google no pudo entregar la pestaña "app" de la hoja.',
   corrupta: 'Los datos de la hoja están a medio escribir; reintento en 20 s.'
 };
+const api = () => String(cfg().api || '').trim().replace(/\/+$/, '');
+function leerServidor() {
+  return fetch(api() + '/api/estado', { headers: { Authorization: 'Bearer ' + token() }, cache: 'no-store', credentials: 'omit' })
+    .catch(() => { throw errorHoja('red', 'Sin conexión con el servidor de Jacinto.'); })
+    .then((r) => r.json().catch(() => ({})).then((j) => {
+      if (r.status === 401) throw errorHoja('token', 'El servidor no aceptó tu token de GitHub: revísalo en Ajustes.');
+      if (r.status === 404 && j.error === 'sin_datos') throw errorHoja('vacia', j.mensaje);
+      if (!r.ok || !j.estado) throw errorHoja('http', j.mensaje || `El servidor respondió con error ${r.status}.`);
+      ocultas = new Set(Array.isArray(j.ocultas) ? j.ocultas : []);
+      return j.estado;
+    }));
+}
 function leerHoja() {
   if (DEMO) {
     return fetch('demo.json', { cache: 'no-store' }).then((r) => {
@@ -81,7 +95,20 @@ function leerHoja() {
       return r.json();
     });
   }
-  if (!cfg().sheetId) return Promise.reject(errorHoja('sinhoja', 'Falta conectar tu hoja de Google: abre Ajustes y pega el link de la hoja.'));
+  if (api() && token()) {
+    return leerServidor().catch((e) => {   // si el servidor falla, se intenta la hoja (si sigue pública)
+      if (!cfg().sheetId || e.tipo === 'token' || e.tipo === 'vacia') throw e;
+      return leerSheet().catch(() => { throw e; });
+    });
+  }
+  return leerSheet();
+}
+function leerSheet() {
+  ocultas = null;
+  if (!cfg().sheetId) {
+    return Promise.reject(errorHoja('sinhoja', api() ? 'Falta tu token de GitHub: ábrelo en Ajustes y pégalo.'
+      : 'Falta conectar tu hoja de Google: abre Ajustes y pega el link de la hoja.'));
+  }
   const url = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(cfg().sheetId)}/gviz/tq?tqx=out:csv&headers=0&sheet=app&_=${Date.now()}`;
   return fetch(url, { cache: 'no-store', credentials: 'omit' })
     .catch(() => { throw errorHoja('red', 'Sin conexión: no se pudo leer la hoja de Jacinto.'); })
@@ -131,6 +158,7 @@ function render() {
   $('#hero').innerHTML = N.htmlHero(d);
   const n = d.hoy && Array.isArray(d.hoy.apuestas) ? d.hoy.apuestas.length : 0;
   $('#nApuestas').textContent = n ? String(n) : '';
+  marcarPremium(d);
   $('#apuestas').innerHTML = N.htmlApuestas(d);
   renderMercados();
   $('#dias').innerHTML = N.htmlDias(d);
@@ -138,6 +166,25 @@ function render() {
   $('#proximas').innerHTML = N.htmlProximas(d);
   if (DEMO) { runs = Array.isArray(d._demo_runs) ? d._demo_runs : []; renderCorridas(); }
   actualizarPie();
+}
+function marcarPremium(d) {
+  const l = d && d.hoy && Array.isArray(d.hoy.apuestas) ? d.hoy.apuestas : [];
+  l.forEach((a) => {
+    if (a && ocultas && !DEMO && String(a.tipo || '').toUpperCase() !== 'DIARIA') a.premium = !ocultas.has(a.id);
+    else if (a) delete a.premium;
+  });
+}
+function cambiarPremium(id, oculto, boton) {
+  boton.disabled = true;
+  fetch(api() + '/api/ocultar', { method: 'POST', credentials: 'omit',
+    headers: { Authorization: 'Bearer ' + token(), 'Content-Type': 'application/json' }, body: JSON.stringify({ id, oculto }) })
+    .then((r) => r.json().catch(() => ({})).then((j) => { if (!r.ok) throw new Error(j.mensaje || `Error ${r.status}`); return j; }))
+    .then((j) => {
+      ocultas = new Set(Array.isArray(j.ocultas) ? j.ocultas : []);
+      render();
+      toast(oculto ? 'Oculta para tus clientes premium ✓' : 'Visible para tus clientes premium ✓');
+    })
+    .catch((e) => { boton.disabled = false; toast(e.message || 'No se pudo cambiar.', 6000); });
 }
 function renderMercados() {
   if (!datos) return;
@@ -316,7 +363,7 @@ function leerHash() {
 }
 
 // ajustes
-const CAMPOS = { owner: '#inOwner', repo: '#inRepo', workflow: '#inWorkflow', branch: '#inBranch', sheetId: '#inSheet' };
+const CAMPOS = { owner: '#inOwner', repo: '#inRepo', workflow: '#inWorkflow', branch: '#inBranch', sheetId: '#inSheet', api: '#inApi' };
 const enmascarar = (t) => (t.length > 16 ? t.slice(0, 11) + '…' + t.slice(-4) : '••••••');
 function cfgFormulario() {
   const c = {};
@@ -348,7 +395,7 @@ function guardarAjustes() {
   else toast('Ajustes guardados ✓');
   cerrarDlg($('#dlgAjustes'));
   cargarRuns();
-  if (c.sheetId !== antes.sheetId) cargar();
+  if (c.sheetId !== antes.sheetId || c.api !== antes.api || (nuevo && api())) cargar();
   if (accionPendiente && token()) {
     const a = accionPendiente;
     accionPendiente = null;
@@ -399,6 +446,8 @@ function init() {
     if (!e.target.closest) return;
     if (e.target.closest('[data-abrir-ajustes]')) abrirAjustes();
     if (e.target.closest('[data-reintentar]')) refrescar();
+    const bp = e.target.closest('[data-premium]');
+    if (bp && !DEMO) cambiarPremium(bp.getAttribute('data-premium'), bp.getAttribute('data-oculto') === '1', bp);
   });
 
   if (!DEMO) {   // copia guardada: se ve al instante mientras llega lo nuevo
