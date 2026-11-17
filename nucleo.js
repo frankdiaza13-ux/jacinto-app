@@ -175,6 +175,7 @@ function htmlApuesta(a, hoyStr) {
   if (num(a.ganancia) !== null && (cerrada || num(a.ganancia) !== 0)) res.push(`<b class="${signoClase(a.ganancia)}">${clp(a.ganancia, true)}</b>`);
   if (num(a.clv) !== null) res.push(`CLV <span class="${signoClase(a.clv)}">${pct(a.clv)}</span>`);
   const etiqueta = tipo === 'DIARIA' ? ' <span class="tipo diaria">Diaria · sin valor, stake mínimo</span>'
+    : tipo === 'MANUAL' ? ' <span class="tipo manual">Manual · elegida por ti</span>'
     : tipo === 'VALOR' ? ' <span class="tipo valor">Valor</span>' : '';
   const aviso = a.estimada && !cerrada ? `<div class="alerta"><span aria-hidden="true">⚠️ </span>Cuota de un feed atrasado: verifica en ${esc(a.casa || 'la casa')}` +
     `${num(a.cuota_min) !== null ? ' que pague ≥ ' + cuota(a.cuota_min) : ' la cuota'} antes de apostar.</div>` : '';
@@ -201,7 +202,19 @@ function htmlApuestas(d) {
 
 const MERC = { APUESTA: ['Apuesta', 'apuesta'], SIN_VALOR: ['Sin valor', 'sinvalor'], SIN_CUOTAS: ['Sin cuotas', 'sincuotas'] };
 const conValor = (m) => m.estado === 'APUESTA' || (num(m.ev) !== null && num(m.ev) > 0);
-function htmlMercados(d, filtro) {
+const normTxt = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+const GRACIA_MANUAL_MS = 10 * 60 * 1000;   // igual que el bot: hasta 10 min después del inicio
+/** ¿Se puede anotar como apuesta manual? (sin valor o sin cuotas, con pronóstico y antes del inicio) */
+function apostable(m, ahoraMs) {
+  if (!m || !m.id || !m.pronostico || m.estado === 'APUESTA') return false;
+  const ko = Date.parse(m.kickoff);
+  return !isNaN(ko) && ko + GRACIA_MANUAL_MS > (ahoraMs || Date.now());
+}
+function yaAnotada(d, m) {
+  const l = d && d.hoy && Array.isArray(d.hoy.apuestas) ? d.hoy.apuestas : [];
+  return l.some((a) => a && a.id === m.id && normTxt(a.pronostico) === normTxt(m.pronostico));
+}
+function htmlMercados(d, filtro, ahoraMs) {
   d = d || {};
   const todos = (Array.isArray(d.mercados) ? d.mercados.filter(Boolean) : [])
     .sort((a, b) => String(a.kickoff || '').localeCompare(String(b.kickoff || '')));
@@ -220,7 +233,10 @@ function htmlMercados(d, filtro) {
     return `<li class="merc m-${e[1]}"><div class="m1"><span class="hora">${esc(etiquetaHora(m.kickoff, hoyStr, true))}</span>` +
       `<span class="badge ${e[1]}">${esc(e[0])}</span></div>` +
       `<div class="m2">${esc(m.partido || '')}${m.competicion ? ` <small>${esc(m.competicion)}</small>` : ''}</div>` +
-      (det.length ? `<div class="m3">${det.join(' · ')}</div>` : '') + (m.motivo ? `<div class="m4">${esc(m.motivo)}</div>` : '') + '</li>';
+      (det.length ? `<div class="m3">${det.join(' · ')}</div>` : '') + (m.motivo ? `<div class="m4">${esc(m.motivo)}</div>` : '') +
+      (m.estado !== 'APUESTA' && yaAnotada(d, m) ? '<div class="m5"><span class="anotada">✍️ Ya anotada</span></div>'
+        : apostable(m, ahoraMs) ? `<div class="m5"><button type="button" class="btn-apostar" data-apostar="${esc(m.id)}">Apostar igual</button></div>` : '') +
+      '</li>';
   }).join('');
   return { filtro, chips, html: lista.length ? `<ul class="mercados">${filas}</ul>`
     : `<p class="vacio">${todos.length ? 'Nada en este filtro.' : 'Todavía no hay partidos revisados hoy.'}</p>` };
@@ -248,6 +264,58 @@ function htmlDias(d) {
     `<line class="cero" x1="${lado}" x2="${W - lado}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}"></line>${barras}</svg>` +
     `<p class="resumen-dias">${plural(dias.length, 'día', 'días')} · ${plural(suma((x) => x.n), 'apuesta', 'apuestas')} · apostado ${clp(suma((x) => x.apostado))}` +
     ` · resultado <b class="${signoClase(tot)}">${clp(tot, true)}</b></p>`;
+}
+
+const DIAS_SEM = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const diaSemana = (ymd) => { const t = new Date(String(ymd || '').slice(0, 10) + 'T12:00:00Z'); return isNaN(t) ? '' : DIAS_SEM[t.getUTCDay()]; };
+const CERRADAS = { HIT: 1, MISS: 1, NULO: 1 };
+const claseHist = (e) => (e === 'HIT' ? 'hit' : e === 'MISS' ? 'miss' : e === 'NULO' ? 'nulo' : 'pend');
+const HFILTROS = [['todas', 'Todas'], ['hit', 'Ganadas'], ['miss', 'Perdidas'], ['pend', 'Por cerrar']];
+function htmlFilaHist(a) {
+  const e = ESTADOS[a.estado] || [a.estado ? String(a.estado) : 'Pendiente', 'pend'], tipo = String(a.tipo || '').toUpperCase();
+  const tag = tipo === 'MANUAL' ? ' <span class="tipo manual">Manual</span>' : tipo === 'DIARIA' ? ' <span class="tipo diaria">Diaria</span>' : '';
+  const det = [`<b>${esc(a.pronostico || '')}</b> <span class="nw">@ ${cuota(a.cuota)}</span>`];
+  if (num(a.apuesta) !== null) det.push(`<span class="nw">${clp(a.apuesta)}</span>`);
+  const info = [];
+  if (a.competicion) info.push(esc(a.competicion));
+  if (a.marcador) info.push('Marcador ' + esc(a.marcador));
+  if (num(a.clv) !== null) info.push(`CLV <span class="${signoClase(a.clv)}">${pct(a.clv)}</span>`);
+  const gan = CERRADAS[a.estado] && num(a.ganancia) !== null ? `<b class="nw ${signoClase(a.ganancia)}">${clp(a.ganancia, true)}</b>` : '';
+  return `<li class="hfila e-${e[1]}"><div class="h1"><span class="hpart">${esc(a.partido || '')}</span><span class="estado ${e[1]}">${esc(e[0])}</span></div>` +
+    `<div class="h2">${det.join(' · ')}${tag}</div>` + (info.length || gan ? `<div class="h3"><span>${info.join(' · ')}</span>${gan}</div>` : '') + '</li>';
+}
+/** Historial de apuestas de días anteriores, agrupado por día (del más nuevo al más viejo). */
+function htmlHistorial(d, filtro, nDias) {
+  const todas = (d && Array.isArray(d.historial) ? d.historial : []).filter((a) => a && a.fecha);
+  if (!todas.length) {
+    return { filtro: 'todas', chips: '', mas: false,
+      html: `<p class="vacio">${d && Array.isArray(d.historial) ? 'Todavía no hay apuestas de días anteriores.' : 'El historial aparece después de la próxima corrida del bot.'}</p>` };
+  }
+  const n = { todas: todas.length, hit: 0, miss: 0, pend: 0 };
+  todas.forEach((a) => { const c = claseHist(a.estado); if (c !== 'nulo') n[c]++; });
+  if (!HFILTROS.some(([k]) => k === filtro) || !n[filtro]) filtro = 'todas';
+  const chips = HFILTROS.filter(([k]) => k === 'todas' || n[k]).map(([k, t]) =>
+    `<button type="button" class="chipf${filtro === k ? ' activo' : ''}" data-hfiltro="${k}" aria-pressed="${filtro === k}">${t} <span>${n[k]}</span></button>`).join('');
+  const lista = filtro === 'todas' ? todas : todas.filter((a) => claseHist(a.estado) === filtro);
+  const grupos = [], pos = {};
+  lista.forEach((a) => {
+    const f = String(a.fecha).slice(0, 10);
+    if (!(f in pos)) { pos[f] = grupos.length; grupos.push({ fecha: f, l: [] }); }
+    grupos[pos[f]].l.push(a);
+  });
+  grupos.sort((x, y) => y.fecha.localeCompare(x.fecha));
+  nDias = Math.max(1, nDias || 7);
+  const html = grupos.slice(0, nDias).map((g, i) => {
+    g.l.sort((x, y) => String(x.kickoff || '').localeCompare(String(y.kickoff || '')));
+    const cerr = g.l.filter((a) => CERRADAS[a.estado]), gan = cerr.reduce((s, a) => s + (num(a.ganancia) || 0), 0);
+    const w = g.l.filter((a) => a.estado === 'HIT').length, p = g.l.filter((a) => a.estado === 'MISS').length;
+    const cab = `<summary class="hdia"><span><b>${esc(diaSemana(g.fecha))} ${esc(fechaCorta(g.fecha))}</b> · ${plural(g.l.length, 'apuesta', 'apuestas')}` +
+      `${cerr.length ? ` · ${w} ✅ ${p} ❌` : ''}</span><span class="hder">${cerr.length ? `<b class="nw ${signoClase(gan)}">${clp(gan, true)}</b>` : ''}` +
+      '<span class="flecha" aria-hidden="true">›</span></span></summary>';
+    // abierto: el día más reciente, o todos si estás filtrando (ganadas/perdidas/por cerrar)
+    return `<details class="hgrupo"${i === 0 || filtro !== 'todas' ? ' open' : ''}>${cab}<ul class="hlista">${g.l.map(htmlFilaHist).join('')}</ul></details>`;
+  }).join('');
+  return { filtro, chips, html, mas: grupos.length > nDias };
 }
 
 function htmlReglas(d) {
@@ -298,7 +366,8 @@ function htmlCorridas(runs, ahoraMs) {
 }
 
 const api = { esc, num, miles, clp, clpCorto, pct, cuota, signoClase, horaChile, fechaChile, fechaCorta, sumarDias, etiquetaHora, hace,
-  parseCSV, unirChunks, leerEstado, htmlHero, htmlApuestas, htmlMercados, htmlDias, htmlReglas, htmlProximas, htmlCorridas, estadoRun, conValor };
+  parseCSV, unirChunks, leerEstado, htmlHero, htmlApuestas, htmlMercados, htmlDias, htmlReglas, htmlProximas, htmlCorridas, estadoRun, conValor,
+  htmlHistorial, apostable, yaAnotada };
 raiz.JacintoNucleo = api;
 if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : this);

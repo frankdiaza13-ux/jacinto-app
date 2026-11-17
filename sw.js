@@ -1,5 +1,5 @@
 /* Jacinto: guarda la app para abrir sin señal. Nunca guarda Google Sheets ni GitHub (otro origen). */
-var CACHE = 'jacinto-v2';
+var CACHE = 'jacinto-v3';
 var CASCARA = ['./', './index.html', './app.css', './nucleo.js', './app.js', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 

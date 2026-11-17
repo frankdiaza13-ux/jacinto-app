@@ -123,6 +123,36 @@ h2.sec { font-size: 12.5px; letter-spacing: .07em; text-transform: uppercase; co
 .m3 { font-size: 13.5px; margin-top: 2px; }
 .m4 { margin-top: 2px; }
 .m-sincuotas .m2, .m-sincuotas .m3 { opacity: .75; }
+.m5 { display: flex; justify-content: flex-end; margin-top: 6px; }
+.btn-apostar { min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--brand); background: transparent;
+  color: var(--brand); font-weight: 700; font-size: 13.5px; cursor: pointer; }
+.btn-apostar:active { transform: scale(.98); }
+.anotada { font-size: 12.5px; font-weight: 700; color: var(--pos); }
+.tipo.manual { background: var(--neutral-bg); color: var(--brand); }
+.apinfo { background: var(--surface-2); border-radius: 12px; padding: 10px 12px; font-size: 14px; }
+.apinfo .ap-part { font-weight: 700; }
+.apinfo .ap-meta { font-size: 12.5px; color: var(--muted); }
+.apinfo .ap-pick { margin-top: 4px; font-size: 15px; }
+
+/* historial */
+.hgrupo { margin-top: 12px; }
+.hgrupo:first-child { margin-top: 4px; }
+.hdia { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--muted);
+  min-height: 44px; padding: 4px 0; border-bottom: 1px solid var(--border); cursor: pointer; list-style: none; }
+.hdia::-webkit-details-marker { display: none; }
+.hder { display: flex; align-items: center; gap: 8px; }
+.flecha { font-size: 20px; line-height: 1; color: var(--muted); transition: transform .15s; }
+.hgrupo[open] .flecha { transform: rotate(90deg); }
+.hdia > span b { color: var(--text); }
+.hlista { list-style: none; margin: 0; padding: 0; }
+.hfila { padding: 9px 0 9px 10px; border-bottom: 1px solid var(--border); border-left: 3px solid var(--border); }
+.h1 { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.hpart { font-weight: 600; font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
+.h2 { font-size: 13.5px; margin-top: 2px; }
+.h3 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.h3 b { font-size: 13.5px; }
+.mas { display: block; width: 100%; min-height: 44px; margin-top: 12px; border-radius: 12px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); font-weight: 700; cursor: pointer; }
 
 /* días */
 .grafico { width: 100%; height: auto; display: block; }
