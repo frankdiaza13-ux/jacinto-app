@@ -4,21 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#0f7b5f">
+<meta name="theme-color" content="#0b1712">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Jacinto">
 <title>Jacinto</title>
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/svg+xml" href="logo.svg">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="stylesheet" href="app.css">
 </head>
-<body>
+<body class="sin-datos">
 <header class="topbar">
   <div class="marca">
-    <img src="icon-192.png" alt="" width="30" height="30">
+    <img src="logo.svg" alt="" width="32" height="32">
     <span>Jacinto</span>
     <span id="demoTag" class="tag" hidden>DEMO</span>
   </div>
@@ -38,62 +39,113 @@
 
   <section id="vacio" class="card" hidden>
     <h2 class="sec">Sin datos todavía</h2>
-    <p>Toca <b>🔍 Analizar</b> una vez: en unos minutos Jacinto escribe la pestaña <code>app</code> de la hoja y aquí verás tu banca, apuestas y mercados.</p>
+    <p>Ve a la pestaña <b>Bot</b> y toca <b>Analizar</b> una vez: en unos minutos Jacinto escribe tus datos y aquí verás tu banca, apuestas y partidos.</p>
   </section>
 
-  <div id="contenido" hidden>
+  <!-- 1. Resumen -->
+  <div class="panel datos" id="p-inicio" data-panel="inicio">
     <section id="hero" class="card hero" aria-label="Banca y resultado de hoy"></section>
-
-    <section class="card" aria-labelledby="tApuestas">
-      <h2 class="sec" id="tApuestas">Apuestas de hoy <span id="nApuestas" class="cuenta"></span></h2>
-      <div id="apuestas"></div>
+    <section class="card atajos" aria-label="Atajos">
+      <button type="button" class="atajo" data-ir="apuestas"><span class="at-n" id="atAbiertas">0</span><span class="at-t">en juego</span></button>
+      <button type="button" class="atajo" data-ir="partidos"><span class="at-n" id="atPartidos">0</span><span class="at-t">partidos revisados</span></button>
+      <button type="button" class="atajo" data-ir="historial"><span class="at-n" id="atCerradas">0</span><span class="at-t">en el historial</span></button>
     </section>
+    <section class="card" aria-labelledby="tDias">
+      <h2 class="sec" id="tDias">Últimos días</h2>
+      <div id="dias"></div>
+      <div id="proximasInicio"></div>
+    </section>
+  </div>
 
+  <!-- 2. Apuestas actuales -->
+  <div class="panel datos" id="p-apuestas" data-panel="apuestas" hidden>
+    <section class="card" aria-labelledby="tAbiertas">
+      <h2 class="sec" id="tAbiertas">En juego <span id="nAbiertas" class="cuenta"></span></h2>
+      <div id="abiertas"></div>
+    </section>
+    <section class="card" aria-labelledby="tCerradasHoy">
+      <h2 class="sec" id="tCerradasHoy">Terminadas hoy <span id="nCerradasHoy" class="cuenta"></span></h2>
+      <div id="cerradasHoy"></div>
+    </section>
+  </div>
+
+  <!-- 3. Partidos revisados (¿por qué? y apostar igual) -->
+  <div class="panel datos" id="p-partidos" data-panel="partidos" hidden>
     <section class="card" aria-labelledby="tMercados">
-      <h2 class="sec" id="tMercados">Mercados de hoy</h2>
-      <div id="chipsMerc" class="chips" role="group" aria-label="Filtrar mercados"></div>
+      <h2 class="sec" id="tMercados">Partidos que revisó Jacinto</h2>
+      <p class="nota intro">Toca <b>¿Por qué?</b> para ver cómo decidió cada partido. Si no lo apostó y tú quieres jugarlo igual, usa
+        <b>Apostar igual</b>: queda anotada en tu hoja como <i>Manual</i>.</p>
+      <div id="chipsMerc" class="chips" role="group" aria-label="Filtrar partidos"></div>
       <div id="mercados"></div>
     </section>
+  </div>
 
+  <!-- 4. Historial -->
+  <div class="panel datos" id="p-historial" data-panel="historial" hidden>
     <section class="card" aria-labelledby="tHistorial">
       <h2 class="sec" id="tHistorial">Historial</h2>
       <div id="chipsHist" class="chips" role="group" aria-label="Filtrar historial"></div>
       <div id="historial"></div>
     </section>
+  </div>
 
-    <section class="card" aria-labelledby="tDias">
-      <h2 class="sec" id="tDias">Últimos días</h2>
-      <div id="dias"></div>
+  <!-- 5. Bot -->
+  <div class="panel" id="p-bot" data-panel="bot" hidden>
+    <section class="card" aria-labelledby="tAcciones">
+      <h2 class="sec" id="tAcciones">Ordenarle a Jacinto</h2>
+      <div class="acciones-in">
+        <button type="button" data-accion="analizar" class="principal"><span class="ico" aria-hidden="true">🔍</span>Analizar</button>
+        <button type="button" data-accion="cerrar"><span class="ico" aria-hidden="true">🌙</span>Cerrar día</button>
+        <button type="button" data-accion="resumen"><span class="ico" aria-hidden="true">📊</span>Resumen</button>
+      </div>
     </section>
-
-    <section class="card">
+    <section class="card" aria-labelledby="tCorridas">
+      <h2 class="sec" id="tCorridas">Corridas en GitHub</h2>
+      <div id="corridas"></div>
+      <div id="proximas"></div>
+    </section>
+    <section class="card datos">
       <details class="reglas-box">
         <summary>Reglas del modelo y glosario</summary>
         <div id="reglas"></div>
       </details>
     </section>
+    <section class="card">
+      <button type="button" class="fila-boton" data-abrir-ajustes><span>⚙ Ajustes (token, hoja, repositorio)</span><span class="flecha" aria-hidden="true">›</span></button>
+    </section>
+    <footer id="pie" class="pie"></footer>
   </div>
-
-  <section class="card" aria-labelledby="tCorridas">
-    <h2 class="sec" id="tCorridas">Corridas en GitHub</h2>
-    <div id="corridas"></div>
-    <div id="proximas"></div>
-  </section>
-
-  <footer id="pie" class="pie"></footer>
 </main>
 
-<nav class="acciones" aria-label="Acciones de Jacinto">
-  <div class="acciones-in">
-    <button type="button" data-accion="analizar" class="principal"><span class="ico" aria-hidden="true">🔍</span>Analizar</button>
-    <button type="button" data-accion="cerrar"><span class="ico" aria-hidden="true">🌙</span>Cerrar día</button>
-    <button type="button" data-accion="resumen"><span class="ico" aria-hidden="true">📊</span>Resumen</button>
+<nav class="tabbar" aria-label="Secciones">
+  <div class="tabbar-in" role="tablist">
+    <button type="button" role="tab" data-tab="inicio" aria-controls="p-inicio">
+      <span class="tb-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9v11h13V9"/><path d="M10 20v-5.5h4V20"/></svg></span>
+      <span class="tb-txt">Resumen</span>
+    </button>
+    <button type="button" role="tab" data-tab="apuestas" aria-controls="p-apuestas">
+      <span class="tb-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5V9a3 3 0 0 0 0 6v2.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5V15a3 3 0 0 0 0-6Z"/><path d="M14.5 5.5v2M14.5 11v2M14.5 16.5v2"/></svg>
+        <span id="badgeApuestas" class="tb-badge" hidden></span></span>
+      <span class="tb-txt">Apuestas</span>
+    </button>
+    <button type="button" role="tab" data-tab="partidos" aria-controls="p-partidos">
+      <span class="tb-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="m12 8.2 3.1 2.3-1.2 3.6h-3.8l-1.2-3.6Z"/><path d="M12 8.2V3.6M15.1 10.5l4.3-1.4M13.9 14.1l2.6 3.7M10.1 14.1l-2.6 3.7M8.9 10.5 4.6 9.1"/></svg></span>
+      <span class="tb-txt">Partidos</span>
+    </button>
+    <button type="button" role="tab" data-tab="historial" aria-controls="p-historial">
+      <span class="tb-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.8 12a8.2 8.2 0 1 0 2.4-5.8"/><path d="M3.5 3.8v3.7h3.7"/><path d="M12 7.5V12l3 2"/></svg></span>
+      <span class="tb-txt">Historial</span>
+    </button>
+    <button type="button" role="tab" data-tab="bot" aria-controls="p-bot">
+      <span class="tb-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="7.5" width="15" height="11.5" rx="3"/><path d="M12 4v3.5"/><circle cx="12" cy="3.6" r=".9"/><circle cx="9.3" cy="12.6" r="1.1"/><circle cx="14.7" cy="12.6" r="1.1"/><path d="M9.5 16h5M2.5 12v3M21.5 12v3"/></svg></span>
+      <span class="tb-txt">Bot</span>
+    </button>
   </div>
 </nav>
 
 <dialog id="dlgConfirmar" class="hoja" aria-labelledby="tConf">
   <div class="hoja-in">
-    <h2 id="tConf">¿Seguro?</h2>
+    <h2 id="tConf" tabindex="-1" autofocus>¿Seguro?</h2>
     <p id="txtConf"></p>
     <div class="botones fin">
       <button type="button" id="btnConfNo">Cancelar</button>
@@ -104,13 +156,17 @@
 
 <dialog id="dlgApostar" class="hoja" aria-labelledby="tApostar">
   <div class="hoja-in">
-    <h2 id="tApostar">Apostar igual</h2>
+    <h2 id="tApostar" tabindex="-1" autofocus>Apostar igual</h2>
     <div id="apInfo" class="apinfo"></div>
+    <div id="apPorque" class="ap-porque"></div>
     <label for="inCuota">Cuota que te da la casa</label>
     <input id="inCuota" inputmode="decimal" autocomplete="off" placeholder="ej. 1.85">
     <label for="inMonto">Monto (pesos)</label>
     <input id="inMonto" inputmode="numeric" autocomplete="off" placeholder="ej. 5000">
     <p id="apEv" class="nota" role="status"></p>
+    <p id="apMontoAviso" class="nota destacada" role="status" hidden></p>
+    <label id="apEntiendoFila" class="check" hidden><input type="checkbox" id="apEntiendo">
+      <span>Entiendo que Jacinto <b>no recomienda</b> esta apuesta y la anoto igual.</span></label>
     <p class="nota">Haz la apuesta primero en la casa. Aquí queda anotada en tu hoja como <b>Manual</b>: cuenta en tu banca y
       se cierra sola, pero no se publica en los canales ni la ven tus clientes premium.</p>
     <div class="botones fin">
@@ -122,7 +178,7 @@
 
 <dialog id="dlgAjustes" class="hoja" aria-labelledby="tAjustes">
   <div class="hoja-in">
-    <h2 id="tAjustes">Ajustes</h2>
+    <h2 id="tAjustes" tabindex="-1" autofocus>Ajustes</h2>
     <p id="ajNota" class="nota destacada" hidden></p>
 
     <label for="inToken">Token de GitHub</label>

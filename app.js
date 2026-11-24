@@ -2,13 +2,15 @@
    El token de GitHub queda solo en este teléfono (localStorage). */
 (function () {
 'use strict';
-const N = window.JacintoNucleo, VERSION = '1.2.0';
+const N = window.JacintoNucleo, VERSION = '2.0.0';
 // El ID de la hoja NO va en el código (el repo de la app es público y la hoja tiene los picks del VIP):
 // se pega una vez en Ajustes (link completo o solo el ID) o se abre la app con #hoja=<ID>; queda solo en el teléfono.
 const DEF = { owner: 'frankdiaza13-ux', repo: 'jacinto-bot', workflow: 'jacinto_cron.yml', branch: 'main', sheetId: '',
   api: 'https://jacinto-premium.jacinto-bot.workers.dev' };   // v1.1: servidor premium (Cloudflare). Con token, los datos salen de ahí y la hoja puede ser privada.
 const idHoja = (t) => { const s = String(t || '').trim(), m = s.match(/\/spreadsheets\/d\/([A-Za-z0-9_-]{20,})/); return m ? m[1] : s; };
-const K = { cfg: 'jacinto.cfg', tok: 'jacinto.token', ultimo: 'jacinto.ultimo', seg: 'jacinto.seguimiento', filtro: 'jacinto.filtro' };
+const K = { cfg: 'jacinto.cfg', tok: 'jacinto.token', ultimo: 'jacinto.ultimo', seg: 'jacinto.seguimiento', filtro: 'jacinto.filtro2',
+  tab: 'jacinto.tab' };
+const TABS = ['inicio', 'apuestas', 'partidos', 'historial', 'bot'];
 const INPUTS_EXTRA = { motor: 'pinnacle', generar_voz: 'no' }, MAX_SEG_MS = 12 * 60 * 1000;
 const ACCIONES = {
   analizar: { corto: 'Analizar', titulo: '¿Analizar ahora?', ok: 'Sí, analizar',
@@ -40,6 +42,8 @@ let ocultas = null;   // ids ocultos en la app premium (null = sin servidor prem
 let datos = null, ultimaCarga = 0, runs = [], cargando = false, seguimiento = null, accionPendiente = null;
 let timerSeg = null, timerToast = null, timerChip = null, filtro = store.get(K.filtro) || 'todas';
 let histFiltro = 'todas', histDias = 7, apMercado = null;   // v1.2: historial y apuesta manual
+let tab = TABS.indexOf(store.get(K.tab)) >= 0 ? store.get(K.tab) : 'inicio';   // v2.0: pestañas de abajo
+const scrollTab = {};
 
 // interfaz
 function toast(msg, ms) {
@@ -55,7 +59,7 @@ function aviso(msg, reintentar) {
 }
 const mostrarDlg = (d) => { if (d.showModal) { if (!d.open) d.showModal(); } else d.setAttribute('open', ''); };
 const cerrarDlg = (d) => { if (d.close) { if (d.open) d.close(); } else d.removeAttribute('open'); };
-const bloquearBotones = (si) => todos('.acciones [data-accion]').forEach((b) => { b.disabled = si; });
+const bloquearBotones = (si) => todos('button[data-accion]').forEach((b) => { b.disabled = si; });
 function mostrarChip(e, url) {
   const c = $('#chipCorrida');
   clearTimeout(timerChip);
@@ -155,19 +159,42 @@ function render() {
   const d = datos;
   if (!d) return;
   $('#cargando').hidden = $('#vacio').hidden = true;
-  $('#contenido').hidden = false;
+  document.body.classList.remove('sin-datos');
   $('#hero').innerHTML = N.htmlHero(d);
-  const n = d.hoy && Array.isArray(d.hoy.apuestas) ? d.hoy.apuestas.length : 0;
-  $('#nApuestas').textContent = n ? String(n) : '';
   marcarPremium(d);
-  $('#apuestas').innerHTML = N.htmlApuestas(d);
+  const act = N.apuestasActuales(d), hoyStr = (d.hoy && d.hoy.fecha) || N.fechaChile(new Date());
+  $('#abiertas').innerHTML = N.htmlLista(act.abiertas, hoyStr, 'No hay apuestas en juego ahora.' +
+    (d.parametros && d.parametros.diaria ? ' Si hoy no aparece valor, en la última revisión del día Jacinto hace la apuesta diaria con monto mínimo.' : ''));
+  $('#cerradasHoy').innerHTML = N.htmlLista(act.cerradas, hoyStr, 'Ninguna terminó todavía hoy.');
+  $('#nAbiertas').textContent = act.abiertas.length ? String(act.abiertas.length) : '';
+  $('#nCerradasHoy').textContent = act.cerradas.length ? String(act.cerradas.length) : '';
+  const badge = $('#badgeApuestas');
+  badge.textContent = act.abiertas.length > 9 ? '9+' : String(act.abiertas.length);
+  badge.hidden = !act.abiertas.length;
+  $('#atAbiertas').textContent = String(act.abiertas.length);
+  $('#atPartidos').textContent = String(Array.isArray(d.mercados) ? d.mercados.length : 0);
+  $('#atCerradas').textContent = String(Array.isArray(d.historial) ? d.historial.length : 0);
   renderMercados();
   renderHistorial();
   $('#dias').innerHTML = N.htmlDias(d);
   $('#reglas').innerHTML = N.htmlReglas(d);
-  $('#proximas').innerHTML = N.htmlProximas(d);
+  $('#proximas').innerHTML = $('#proximasInicio').innerHTML = N.htmlProximas(d);
   if (DEMO) { runs = Array.isArray(d._demo_runs) ? d._demo_runs : []; renderCorridas(); }
   actualizarPie();
+}
+// v2.0: pestañas (abajo, como la app de la casa de apuestas)
+function irA(nuevo, sinScroll) {
+  if (TABS.indexOf(nuevo) < 0) nuevo = 'inicio';
+  if (nuevo !== tab) scrollTab[tab] = window.scrollY || 0;
+  tab = nuevo;
+  store.set(K.tab, tab);
+  todos('.tabbar [data-tab]').forEach((b) => {
+    const si = b.getAttribute('data-tab') === tab;
+    b.classList.toggle('activo', si);
+    b.setAttribute('aria-selected', si ? 'true' : 'false');
+  });
+  todos('[data-panel]').forEach((p) => { p.hidden = p.getAttribute('data-panel') !== tab; });
+  if (!sinScroll) window.scrollTo(0, scrollTab[tab] || 0);
 }
 function marcarPremium(d) {
   const l = d && d.hoy && Array.isArray(d.hoy.apuestas) ? d.hoy.apuestas : [];
@@ -206,6 +233,7 @@ function renderHistorial() {
 // v1.2: apostar igual (mercado sin valor -> apuesta manual en tu hoja)
 const numero = (s) => { const n = parseFloat(String(s || '').replace(',', '.')); return isNaN(n) ? null : n; };
 const pesos = (s) => { const n = parseInt(String(s || '').replace(/[^\d]/g, ''), 10); return isNaN(n) ? null : n; };
+let apRiesgo = false;   // v2.0: Jacinto vetó la opción o la marcó como sospechosa -> hay que confirmar
 function abrirApostar(id) {
   const m = datos && Array.isArray(datos.mercados) ? datos.mercados.filter((x) => x && x.id === id)[0] : null;
   if (!m || !N.apostable(m)) { toast('Ese partido ya empezó o ya no está en la lista.'); renderMercados(); return; }
@@ -214,13 +242,24 @@ function abrirApostar(id) {
     return;
   }
   apMercado = m;
-  const p = (datos && datos.parametros) || {};
+  const p = (datos && datos.parametros) || {}, ex = N.explicarMotivo(m.motivo, m);
+  apRiesgo = ex.nivel === 'veto' || ex.nivel === 'alerta';
   $('#apInfo').innerHTML = `<div class="ap-part">${N.esc(m.partido || '')}</div>` +
     `<div class="ap-meta">${N.esc([m.competicion, N.etiquetaHora(m.kickoff, (datos.hoy && datos.hoy.fecha) || N.fechaChile(new Date()), true)].filter(Boolean).join(' · '))}</div>` +
     `<div class="ap-pick"><b>${N.esc(m.pronostico)}</b>${N.num(m.prob) !== null ? ` <span class="ap-meta">· prob. real ${N.pct(m.prob, false, 0)}</span>` : ''}</div>`;
+  const titulo = apRiesgo ? 'Jacinto NO recomienda esta apuesta' : 'Por qué Jacinto no la apostó';
+  $('#apPorque').innerHTML = `<div class="ap-alerta nivel-${ex.nivel}"><b>${N.ICONO_NIVEL[ex.nivel] || ''} ${N.esc(titulo)}: ${N.esc(ex.corto)}</b>` +
+    (ex.largo ? `<p>${N.esc(ex.largo)}</p>` : '') + '</div>' +
+    `<details class="porque"><summary><span>Ver todo el detalle</span><span class="flecha" aria-hidden="true">›</span></summary>` +
+    `<div class="pq">${N.htmlPorQue(m, datos)}</div></details>`;
+  $('#apEntiendoFila').hidden = !apRiesgo;
+  $('#apEntiendo').checked = false;
+  $('#btnApOk').textContent = apRiesgo ? 'Anotar igual' : 'Anotar apuesta';
+  $('#btnApOk').classList.toggle('riesgo', apRiesgo);
   $('#inCuota').value = N.num(m.cuota) ? String(m.cuota) : '';
   $('#inMonto').value = String(N.num(p.monto_manual) || N.num(p.min_clp) || 1000);
   actualizarEv();
+  actualizarMonto();
   mostrarDlg($('#dlgApostar'));
 }
 function actualizarEv() {
@@ -232,8 +271,20 @@ function actualizarEv() {
   const min = N.num(props ? p.ev_min_props : p.ev_min_principal);
   const conValor = min !== null && ev * 100 >= min;
   el.innerHTML = `EV con esta cuota: <b class="${N.signoClase(ev)}">${N.pct(ev * 100)}</b>` +
-    (min === null ? '' : conValor ? ' · con esta cuota sí tendría valor ✓' : ` · sin valor (Jacinto pide ${N.pct(min)} o más)`);
+    (min === null ? '' : conValor ? (apRiesgo ? ' · los números dan valor, pero ojo con el aviso de arriba' : ' · con esta cuota sí tendría valor ✓')
+      : ` · sin valor (Jacinto pide ${N.pctTxt(min)} o más)`);
   el.className = 'nota';
+}
+/** v2.0: avisa si el monto pasa el tope por apuesta que usa Jacinto (% de la banca). */
+function actualizarMonto() {
+  const el = $('#apMontoAviso'), p = (datos && datos.parametros) || {}, b = (datos && datos.banca) || {};
+  const monto = pesos($('#inMonto').value), tope = N.num(p.max_pct), banca = N.num(b.actual);
+  if (!monto || tope === null || !banca) { el.hidden = true; return; }
+  const max = banca * tope / 100;
+  el.hidden = monto <= max;
+  if (!el.hidden) {
+    el.textContent = `Ojo: ${N.clp(monto)} es más de lo que Jacinto apuesta por partido (${N.pct(tope, false)} de tu banca = ${N.clp(max)}).`;
+  }
 }
 function confirmarApostar() {
   const m = apMercado, p = (datos && datos.parametros) || {};
@@ -241,15 +292,22 @@ function confirmarApostar() {
   const c = numero($('#inCuota').value), monto = pesos($('#inMonto').value), min = N.num(p.min_clp) || 1000;
   if (!c || c < 1.01 || c > 50) { toast('Escribe la cuota que te da la casa (ej. 1.85).'); $('#inCuota').focus(); return; }
   if (!monto || monto < min) { toast(`El monto mínimo es ${N.clp(min)}.`); $('#inMonto').focus(); return; }
+  if (apRiesgo && !$('#apEntiendo').checked) {
+    toast('Jacinto no recomienda esta apuesta: marca la casilla si igual la quieres anotar.', 5000);
+    $('#apEntiendo').focus();
+    return;
+  }
   cerrarDlg($('#dlgApostar'));
   apMercado = null;
   if (DEMO) { toast('Modo demo: no se envió nada a GitHub.'); return; }
   despachar('apostar', { apuesta: JSON.stringify({ id: m.id, pronostico: m.pronostico, cuota: Math.round(c * 100) / 100, monto }) });
 }
 function renderVacio(porError) {
-  $('#cargando').hidden = $('#contenido').hidden = true;
+  $('#cargando').hidden = true;
+  document.body.classList.add('sin-datos');
   $('#vacio').hidden = !!porError;
-  $('#proximas').innerHTML = '';
+  $('#proximas').innerHTML = $('#proximasInicio').innerHTML = '';
+  $('#badgeApuestas').hidden = true;
 }
 function actualizarPie() {
   const partes = [];
@@ -410,6 +468,7 @@ function leerHash() {
   const h = location.hash.replace(/^#/, '');
   if (!h) return;
   const p = new URLSearchParams(h), accion = p.get('accion'), hoja = idHoja(p.get('hoja'));
+  if (TABS.indexOf(p.get('tab')) >= 0) irA(p.get('tab'));   // v2.0: link directo a una pestaña (#tab=partidos)
   try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* nada */ }
   if (hoja && !DEMO) {   // link de configuración: guarda el ID de la hoja en este teléfono
     const c = cfg();
@@ -419,7 +478,7 @@ function leerHash() {
       else toast('Este navegador no deja guardar datos: pega el link de la hoja en Ajustes.', 8000);
     }
   }
-  if (accion && ACCIONES[accion]) pedirAccion(accion);
+  if (accion && ACCIONES[accion]) { irA('bot'); pedirAccion(accion); }
 }
 
 // ajustes
@@ -480,7 +539,9 @@ function refrescar() { cargar(); cargarRuns(); }
 const clic = (sel, fn) => $(sel).addEventListener('click', (e) => { e.preventDefault(); fn(e); });
 function init() {
   if (DEMO) { $('#demoTag').hidden = false; document.title = 'Jacinto (demo)'; }
-  todos('.acciones [data-accion]').forEach((b) => b.addEventListener('click', () => pedirAccion(b.getAttribute('data-accion'))));
+  todos('button[data-accion]').forEach((b) => b.addEventListener('click', () => pedirAccion(b.getAttribute('data-accion'))));
+  todos('.tabbar [data-tab]').forEach((b) => b.addEventListener('click', () => irA(b.getAttribute('data-tab'))));
+  irA(tab, true);
   clic('#btnRefrescar', refrescar);
   clic('#btnAjustes', () => abrirAjustes());
   clic('#btnConfOk', confirmar);
@@ -498,6 +559,7 @@ function init() {
   clic('#btnApOk', confirmarApostar);
   clic('#btnApNo', () => { apMercado = null; cerrarDlg($('#dlgApostar')); });
   $('#inCuota').addEventListener('input', actualizarEv);
+  $('#inMonto').addEventListener('input', actualizarMonto);
   $('#chipsHist').addEventListener('click', (e) => {
     const b = e.target.closest && e.target.closest('[data-hfiltro]');
     if (!b) return;
@@ -517,6 +579,8 @@ function init() {
     if (e.target.closest('[data-abrir-ajustes]')) abrirAjustes();
     if (e.target.closest('[data-reintentar]')) refrescar();
     if (e.target.closest('[data-hmas]')) { histDias += 7; renderHistorial(); }
+    const bi = e.target.closest('[data-ir]');
+    if (bi) irA(bi.getAttribute('data-ir'));
     const ba = e.target.closest('[data-apostar]');
     if (ba) abrirApostar(ba.getAttribute('data-apostar'));
     const bp = e.target.closest('[data-premium]');

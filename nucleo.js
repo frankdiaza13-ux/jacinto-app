@@ -200,8 +200,98 @@ function htmlApuestas(d) {
   return lista.map((a) => htmlApuesta(a, hoyStr)).join('');
 }
 
-const MERC = { APUESTA: ['Apuesta', 'apuesta'], SIN_VALOR: ['Sin valor', 'sinvalor'], SIN_CUOTAS: ['Sin cuotas', 'sincuotas'] };
+const MERC = { APUESTA: ['Apostado', 'apuesta'], SIN_VALOR: ['Descartado', 'sinvalor'], SIN_CUOTAS: ['Sin cuotas', 'sincuotas'] };
 const conValor = (m) => m.estado === 'APUESTA' || (num(m.ev) !== null && num(m.ev) > 0);
+
+// v2.0: el "¿por qué?" de cada partido, en palabras simples
+const VETOS = { arbitro_tarjetero: 'el árbitro saca muchas tarjetas', bajas: 'hay bajas importantes', rotacion: 'un equipo va a rotar titulares',
+  sin_arquero: 'un equipo juega sin su arquero titular', clima: 'hay clima extremo' };
+const numDe = (s) => num(String(s == null ? '' : s).replace(/[−–]/g, '-').replace('+', '').replace(',', '.'));
+const pctTxt = (s) => { const n = numDe(s); return pct(n, true, n !== null && Math.round(n) === n ? 0 : 1); };
+/** motivo del bot -> {nivel: ok|info|alerta|veto, corto, largo}. m = mercado (pronostico, ev, contexto). */
+function explicarMotivo(motivo, m) {
+  const t = String(motivo || '').trim(), c = (m && m.contexto) || {}, pron = (m && m.pronostico) || '';
+  const props = /c[oó]rner|tarjeta/i.test(pron);
+  let x;
+  if ((x = t.match(/^EV\s*([+\-−]?[\d.,]+)%\s*(?:>=|≥)\s*([+\-−]?[\d.,]+)%/))) {
+    return { nivel: 'ok', corto: `Tiene valor (EV ${pctTxt(x[1])})`,
+      largo: `Betano paga más de lo justo según la probabilidad real de Pinnacle: EV ${pctTxt(x[1])}, y Jacinto pide ${pctTxt(x[2])} o más${props ? ' en córners y tarjetas' : ''}.` };
+  }
+  if ((x = t.match(/^VETO\s+(\w+)/))) {
+    const v = (Array.isArray(c.vetos) ? c.vetos : []).filter((z) => Array.isArray(z) && normTxt(z[0]) === normTxt(pron))[0];
+    const causa = VETOS[x[1]] || x[1].replace(/_/g, ' ');
+    return { nivel: 'veto', corto: `Vetada: ${causa}`,
+      largo: `Los números le daban valor, pero la ficha del partido mostró algo que la hace riesgosa${v && v[2] ? ': ' + v[2] : ' (' + causa + ')'}. ` +
+        'Jacinto no apuesta contra eso.' };
+  }
+  if (/sospechoso/i.test(t)) {
+    x = t.match(/EV\s*([+\-−]?[\d.,]+)%/);
+    return { nivel: 'alerta', corto: `Demasiado buena para ser cierta${x ? ` (EV ${pctTxt(x[1])})` : ''}`,
+      largo: 'Un EV así de alto casi siempre es un error: la línea de Betano no es la misma que la de Pinnacle o la cuota está ' +
+        'desactualizada. Si igual la quieres, revisa en Betano que sea exactamente la misma apuesta y la misma línea.' };
+  }
+  if ((x = t.match(/^EV\s*([+\-−]?[\d.,]+)%\s*<\s*([+\-−]?[\d.,]+)%/))) {
+    const cv = num(c.cuota_valor);
+    return { nivel: 'info', corto: `Le falta valor (EV ${pctTxt(x[1])}, pide ${pctTxt(x[2])})`,
+      largo: `Betano paga poco para lo probable que es. Jacinto pide al menos ${pctTxt(x[2])} de ventaja` +
+        `${props ? ' en córners y tarjetas, donde Pinnacle es menos preciso' : ''}.` +
+        (cv && cv > 1 ? ` Con cuota ${cuota(cv)} o más sí tendría valor.` : '') };
+  }
+  if ((x = t.match(/^cuota\s*([\d.,]+)\s*<\s*([\d.,]+)/))) {
+    return { nivel: 'info', corto: `Cuota muy baja (bajo ${cuota(numDe(x[2]))})`,
+      largo: `Bajo ${cuota(numDe(x[2]))} se arriesga mucho para ganar poco: Jacinto no apuesta ahí aunque sea muy probable.` };
+  }
+  if ((x = t.match(/^cuota\s*([\d.,]+)\s*>\s*([\d.,]+)/))) {
+    return { nivel: 'info', corto: `Cuota muy alta (sobre ${cuota(numDe(x[2]))})`,
+      largo: `Sobre ${cuota(numDe(x[2]))} la apuesta es poco probable y las rachas malas se hacen largas.` };
+  }
+  if (/sin cuota/i.test(t)) {
+    return { nivel: 'info', corto: 'Sin cuotas para comparar',
+      largo: 'Falta el precio de Pinnacle o el de Betano para este partido, así que no se puede medir si hay valor.' };
+  }
+  if (/tope del d[ií]a/i.test(t)) return { nivel: 'info', corto: 'Tope del día alcanzado', largo: 'Ya se apostó el máximo permitido para hoy.' };
+  if (/kelly/i.test(t)) return { nivel: 'info', corto: 'Ventaja muy chica', largo: 'La ventaja alcanza para un monto menor al mínimo, así que no se apuesta.' };
+  return { nivel: 'info', corto: t || 'Sin apuesta', largo: '' };
+}
+const ICONO_NIVEL = { ok: '✅', info: 'ℹ️', alerta: '⚠️', veto: '⛔' };
+/** Detalle del "¿Por qué?" de un partido revisado. */
+function htmlPorQue(m, d) {
+  const c = m.contexto || {}, e = explicarMotivo(m.motivo, m), filas = [];
+  if (e.largo) filas.push(`<p class="pq-txt">${esc(e.largo)}</p>`);
+  const nums = [];
+  if (num(m.prob) !== null) nums.push(['Prob. real (Pinnacle)', pct(m.prob, false, 0)]);
+  if (num(m.prob) > 0) nums.push(['Cuota justa', cuota(100 / num(m.prob))]);
+  if (num(c.pin) !== null) nums.push(['Paga Pinnacle', cuota(c.pin)]);
+  if (num(m.cuota) !== null) nums.push([`Paga ${c.casa || 'tu casa'}`, cuota(m.cuota)]);
+  if (num(m.ev) !== null) nums.push(['EV', `<b class="${signoClase(m.ev)}">${pct(m.ev)}</b>`]);
+  if (num(c.ev_min) !== null && m.estado !== 'APUESTA') nums.push(['EV que pide Jacinto', pctTxt(c.ev_min)]);
+  if (nums.length) filas.push(`<dl class="pq-nums">${nums.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${v.indexOf('<') === 0 ? v : esc(v)}</dd></div>`).join('')}</dl>`);
+  if (c.estimada) filas.push('<p class="pq-txt">⚠️ La cuota de la casa venía atrasada (estimada): verifica el precio real antes de apostar.</p>');
+  if (c.nuevo) filas.push('<p class="pq-txt">🆕 Es un mercado nuevo (v6.7): solo se usa si el partido no tiene apuesta en los mercados de siempre.</p>');
+  const vetos = (Array.isArray(c.vetos) ? c.vetos : []).filter((v) => Array.isArray(v) && v[0]);
+  if (vetos.length) {
+    filas.push('<h4>Vetos de la ficha</h4><ul class="pq-lista">' + vetos.map((v) =>
+      `<li>⛔ <b>${esc(v[0])}</b>: ${esc(v[2] || VETOS[v[1]] || v[1] || '')}</li>`).join('') + '</ul>');
+  }
+  if (c.ficha || c.resumen) {
+    filas.push('<h4>Ficha del partido</h4>' + (c.ficha ? `<p class="pq-ficha">${esc(String(c.ficha).split(' | ').join(' · '))}</p>` : '') +
+      (c.resumen ? `<p class="pq-txt">${esc(c.resumen)}</p>` : ''));
+  }
+  const otras = (Array.isArray(c.otras) ? c.otras : []).filter((o) => Array.isArray(o) && o[0]);
+  if (otras.length) {
+    filas.push('<h4>Otras opciones que miró</h4><ul class="pq-lista">' + otras.map((o) => {
+      const eo = explicarMotivo(o[4], { pronostico: o[0], contexto: c });
+      return `<li><b>${esc(o[0])}</b> <span class="nw">@ ${cuota(o[1])}</span> · prob ${pct(o[2], false, 0)} · ` +
+        `<span class="nw ${signoClase(o[3])}">EV ${pct(o[3])}</span><br><small>${ICONO_NIVEL[eo.nivel] || ''} ${esc(o[4] === 'OK' ? 'También tenía valor' : eo.corto)}</small></li>`;
+    }).join('') + '</ul>');
+  }
+  const cuando = [];
+  if (m.analizado) cuando.push('Revisado ' + esc(hace(m.analizado)));
+  if (num(m.horas_antes) !== null) cuando.push(`${String(num(m.horas_antes)).replace('.', ',')} h antes del partido`);
+  if (cuando.length) filas.push(`<p class="pq-cuando">${cuando.join(' · ')}</p>`);
+  if (!m.contexto) filas.push('<p class="pq-cuando">El detalle completo (ficha, vetos y otras opciones) aparece desde la próxima revisión del bot.</p>');
+  return filas.join('');
+}
 const normTxt = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
 const GRACIA_MANUAL_MS = 10 * 60 * 1000;   // igual que el bot: hasta 10 min después del inicio
 /** ¿Se puede anotar como apuesta manual? (sin valor o sin cuotas, con pronóstico y antes del inicio) */
@@ -214,32 +304,53 @@ function yaAnotada(d, m) {
   const l = d && d.hoy && Array.isArray(d.hoy.apuestas) ? d.hoy.apuestas : [];
   return l.some((a) => a && a.id === m.id && normTxt(a.pronostico) === normTxt(m.pronostico));
 }
+const PFILTROS = [['todas', 'Todos'], ['apuesta', 'Apostados'], ['descartados', 'Descartados']];
+/** v2.0: partidos que revisó Jacinto (hoy y mañana), con el "¿Por qué?" y el botón "Apostar igual". */
 function htmlMercados(d, filtro, ahoraMs) {
   d = d || {};
   const todos = (Array.isArray(d.mercados) ? d.mercados.filter(Boolean) : [])
     .sort((a, b) => String(a.kickoff || '').localeCompare(String(b.kickoff || '')));
-  const n = { todas: todos.length, valor: todos.filter(conValor).length };
-  n.sin = n.todas - n.valor;
-  if (filtro !== 'valor' && filtro !== 'sin') filtro = 'todas';
-  const chips = [['todas', 'Todas'], ['valor', 'Con valor'], ['sin', 'Sin valor']].map(([k, t]) =>
+  const ap = (m) => m.estado === 'APUESTA';
+  const n = { todas: todos.length, apuesta: todos.filter(ap).length };
+  n.descartados = n.todas - n.apuesta;
+  if (!PFILTROS.some(([k]) => k === filtro)) filtro = 'todas';
+  const chips = PFILTROS.map(([k, t]) =>
     `<button type="button" class="chipf${filtro === k ? ' activo' : ''}" data-filtro="${k}" aria-pressed="${filtro === k}">${t} <span>${n[k]}</span></button>`).join('');
-  const lista = filtro === 'valor' ? todos.filter(conValor) : filtro === 'sin' ? todos.filter((m) => !conValor(m)) : todos;
+  const lista = filtro === 'apuesta' ? todos.filter(ap) : filtro === 'descartados' ? todos.filter((m) => !ap(m)) : todos;
   const hoyStr = (d.hoy && d.hoy.fecha) || fechaChile(new Date());
   const filas = lista.map((m) => {
-    const e = MERC[m.estado] || [m.estado ? String(m.estado) : '—', 'sincuotas'], det = [];
-    if (m.pronostico) det.push(esc(m.pronostico) + (num(m.cuota) ? ' @ ' + cuota(m.cuota) : ''));
+    const e = MERC[m.estado] || [m.estado ? String(m.estado) : '—', 'sincuotas'], det = [], ex = explicarMotivo(m.motivo, m);
     if (num(m.prob) !== null) det.push('prob ' + pct(m.prob, false, 0));
-    if (num(m.ev) !== null) det.push(`<b class="${signoClase(m.ev)}">EV ${pct(m.ev)}</b>`);
-    return `<li class="merc m-${e[1]}"><div class="m1"><span class="hora">${esc(etiquetaHora(m.kickoff, hoyStr, true))}</span>` +
-      `<span class="badge ${e[1]}">${esc(e[0])}</span></div>` +
-      `<div class="m2">${esc(m.partido || '')}${m.competicion ? ` <small>${esc(m.competicion)}</small>` : ''}</div>` +
-      (det.length ? `<div class="m3">${det.join(' · ')}</div>` : '') + (m.motivo ? `<div class="m4">${esc(m.motivo)}</div>` : '') +
-      (m.estado !== 'APUESTA' && yaAnotada(d, m) ? '<div class="m5"><span class="anotada">✍️ Ya anotada</span></div>'
-        : apostable(m, ahoraMs) ? `<div class="m5"><button type="button" class="btn-apostar" data-apostar="${esc(m.id)}">Apostar igual</button></div>` : '') +
+    if (num(m.ev) !== null) det.push(`<b class="nw ${signoClase(m.ev)}">EV ${pct(m.ev)}</b>`);
+    const anotada = !ap(m) && yaAnotada(d, m), puede = !anotada && apostable(m, ahoraMs);
+    return `<li class="merc m-${e[1]} n-${ex.nivel}"><div class="m1"><span class="hora">${esc(etiquetaHora(m.kickoff, hoyStr, true))}` +
+      `${m.competicion ? ' · ' + esc(m.competicion) : ''}</span><span class="badge ${e[1]}">${esc(e[0])}</span></div>` +
+      `<div class="m2">${esc(m.partido || '')}</div>` +
+      (m.pronostico ? `<div class="m3"><span class="m3l">${ap(m) ? 'Apuesta' : 'Mejor opción'}:</span> <b>${esc(m.pronostico)}</b>` +
+        `${num(m.cuota) ? ` <span class="nw">@ ${cuota(m.cuota)}</span>` : ''}${det.length ? ' · ' + det.join(' · ') : ''}</div>` : '') +
+      `<div class="m4 nivel-${ex.nivel}"><span aria-hidden="true">${ICONO_NIVEL[ex.nivel] || ''}</span> ${esc(ex.corto)}</div>` +
+      `<details class="porque"><summary><span>¿Por qué?</span><span class="flecha" aria-hidden="true">›</span></summary>` +
+      `<div class="pq">${htmlPorQue(m, d)}</div></details>` +
+      (anotada ? '<div class="m5"><span class="anotada">✍️ Ya la anotaste</span></div>'
+        : puede ? `<div class="m5"><button type="button" class="btn-apostar${ex.nivel === 'veto' || ex.nivel === 'alerta' ? ' riesgo' : ''}" ` +
+          `data-apostar="${esc(m.id)}">Apostar igual</button></div>` : '') +
       '</li>';
   }).join('');
   return { filtro, chips, html: lista.length ? `<ul class="mercados">${filas}</ul>`
     : `<p class="vacio">${todos.length ? 'Nada en este filtro.' : 'Todavía no hay partidos revisados hoy.'}</p>` };
+}
+
+/** v2.0: apuestas "actuales" = las que siguen en juego (hoy y días anteriores sin cerrar) y las que terminaron hoy. */
+function apuestasActuales(d) {
+  const hoy = d && d.hoy && Array.isArray(d.hoy.apuestas) ? d.hoy.apuestas.filter(Boolean) : [];
+  const viejas = (d && Array.isArray(d.historial) ? d.historial : []).filter((a) => a && !CERRADAS[a.estado]);
+  const abiertas = hoy.filter((a) => !CERRADAS[a.estado]).concat(viejas)
+    .sort((a, b) => String(a.kickoff || '').localeCompare(String(b.kickoff || '')));
+  const cerradas = hoy.filter((a) => CERRADAS[a.estado]).sort((a, b) => String(b.kickoff || '').localeCompare(String(a.kickoff || '')));
+  return { abiertas, cerradas };
+}
+function htmlLista(l, hoyStr, vacio) {
+  return l.length ? l.map((a) => htmlApuesta(a, hoyStr)).join('') : `<p class="vacio">${vacio}</p>`;
 }
 
 function htmlDias(d) {
@@ -367,7 +478,7 @@ function htmlCorridas(runs, ahoraMs) {
 
 const api = { esc, num, miles, clp, clpCorto, pct, cuota, signoClase, horaChile, fechaChile, fechaCorta, sumarDias, etiquetaHora, hace,
   parseCSV, unirChunks, leerEstado, htmlHero, htmlApuestas, htmlMercados, htmlDias, htmlReglas, htmlProximas, htmlCorridas, estadoRun, conValor,
-  htmlHistorial, apostable, yaAnotada };
+  htmlHistorial, apostable, yaAnotada, explicarMotivo, pctTxt, htmlPorQue, apuestasActuales, htmlLista, htmlApuesta, ICONO_NIVEL };
 raiz.JacintoNucleo = api;
 if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof self !== 'undefined' ? self : this);

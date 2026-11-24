@@ -1,7 +1,7 @@
 /* Jacinto: guarda la app para abrir sin señal. Nunca guarda Google Sheets ni GitHub (otro origen). */
-var CACHE = 'jacinto-v3';
+var CACHE = 'jacinto-v4';
 var CASCARA = ['./', './index.html', './app.css', './nucleo.js', './app.js', './manifest.webmanifest',
-  './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
+  './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png', './logo.svg'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(CASCARA); }).then(function () { return self.skipWaiting(); }));
